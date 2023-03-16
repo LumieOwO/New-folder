@@ -3,7 +3,7 @@ Very wip probably wont work on it but meh
 
 
 ```bash
-python main.py -t 10 -
+python main.py -t 10 -url https://example.com
 ```
 
 ```

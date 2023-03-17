@@ -1,46 +1,48 @@
-import ssl
-import socket
-
+from utils.httpsocket import HttpSocket, shutdown_http_socket
+from gzip import decompress
+import re
 
 class Request:
-    def __init__(self,url):
+    def __init__(self, url):
         self.url = url
-        parts = self.url.split('/')
-        self.host = parts[2]
-        self.path = '/' + '/'.join(parts[3:])
-        self.headers = f"GET {self.path} HTTP/1.1\r\nHost: {self.host} \r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36 \r\n\r\n"
 
     def get(self):
-        if self.url.startswith("https://"):
-            port = 443
-            context = ssl.SSLContext()
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            ssl_sock = context.wrap_socket(sock, server_hostname=self.host)
-            try:
-                ssl_sock.connect((self.host, 443))
-            except:
-                return -1,0
-            ssl_sock.sendall(bytes(self.headers,"utf-8"))
-            data = b""
-            while True:
-                recv_data = ssl_sock.recv(1024)
-                if not recv_data:
-                    break
-                data += recv_data
-            ssl_sock.close()
+        if str(self.url).startswith("https://"):
+            return self.requesting(port=443)
         else:
-            port = 80
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                sock.connect((self.host, 80))
-            except:
-                return -1,0
-            sock.sendall(bytes(self.headers,"utf-8"))
-            data = b""
-            while True:
-                recv_data = sock.recv(1024)
-                if not recv_data:
+            return self.requesting(port=80)
+        
+    def requesting(self, port):
+        sock = HttpSocket(url=self.url).create_http_socket(port=port)
+        resp = b""
+        while True:
+            data = sock.recv(2048)
+            if not data:
+                break
+            resp += data
+        shutdown_http_socket(sock=sock)
+        headers, content = resp.split(b"\r\n\r\n", 1)
+        status_code = int(headers.split()[1])
+        if status_code in [301, 302, 303, 307, 308]:
+            new_location = ''
+            for header in headers.split(b'\r\n'):
+                if header.lower().startswith(b'location:'):
+                    try:
+                        new_location = header.split(b'location: ')[1]
+                    except IndexError:
+                        new_location = header.split(b'location: ')[0]
                     break
-                data += recv_data
-            sock.close()
-        return data,port
+            self.url = new_location.decode()
+            content, port = self.requesting(port)
+        encoding = re.search(b"charset=(.*)", headers, re.IGNORECASE)
+        if encoding:
+            content = content.decode(encoding.group(1).decode(), errors="replace")
+        elif headers.lower().count(b"content-encoding: gzip"):
+            content = decompress(content).decode(errors="replace")
+        else:
+            content = content.decode(errors="replace")
+        html_start = content.find("<!DOCTYPE html>")
+        html_end = content.find("</html>") + 7
+        content = content[html_start:html_end]
+        print(content)
+        return content, port

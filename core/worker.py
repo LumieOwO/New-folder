@@ -1,5 +1,5 @@
 from core.request import Request
-from core.htmlparser import HtmlParser
+from utils.htmlparser import HtmlParser
 
 
 class Worker:
@@ -29,10 +29,12 @@ class Worker:
                 for url in self.urlss:
                     if not self.url_validator(url):
                         continue
+                    print(url)
                     html_code, port = Request(url=url).get()
                     if html_code == -1:
                         self.__writetxt()
                     urlst: list = HtmlParser(html_code=html_code, int_port=port).parse()
+                    print(urlst)
                     self.urlss.extend(urlst)
                 self.__writetxt()
             except:
